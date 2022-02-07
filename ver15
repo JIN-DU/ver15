@@ -1,0 +1,68 @@
+# Ver 1.2 튜플이용 코딩 단순화(2천줄 > 50여줄 축소)
+# 상승종목만 
+# 72종목 1회 > 36초 소요
+# 상승조건 추가1 : (pyupbit.get_current_price(["KRW-JST"]) > close[-1])
+# 상승조건 추가2 : (now < avg*0.995) or ( now < cost[-1] * 0.97) > 수익률을 확정짖지 않고 상승의 여지를 남겨둔 조건이다!!
+# 이동평균 3분으로 조정 >> 이전 종가기준 상승률 적용키로
+# volume[-1] 는 현 거래량이 아닌, 직전 정각 분의 거래량이었다. !!!!!!
+# 매수조건을 전 정각 시의 가격기준으로 변경, 단순화
+# 매수시 잔고 요건 추가 upbit.get_balance() > 5100000
+
+import pyupbit
+import time
+import datetime
+import numpy as np
+
+access = ""
+secret = ""
+upbit = pyupbit.Upbit(access, secret)
+   
+tickers = ("KRW-REP", "KRW-NEAR", "KRW-WAVES", "KRW-QTUM", "KRW-FLOW", "KRW-WEMIX", "KRW-GAS", "KRW-OMG", "KRW-SBD", "KRW-TON", # 10
+           "KRW-SAND", "KRW-XTZ", "KRW-KAVA", "KRW-THETA", "KRW-LSK", "KRW-MANA", "KRW-AQT", "KRW-CBK", "KRW-SRM", "KRW-EOS", # 20
+           "KRW-KNC", "KRW-DAWN", "KRW-ENJ", "KRW-1INCH", "KRW-MTL", "KRW-MATIC", "KRW-STX", "KRW-SXP", "KRW-STORJ", "KRW-STRAX", # 30
+           "KRW-BORA", "KRW-ADA", "KRW-HIVE", "KRW-PLA", "KRW-ARK", "KRW-ALGO", "KRW-IOTA", "KRW-BAT", "KRW-MLK", "KRW-BAT", # 40
+           "KRW-PUNDIX", "KRW-ICX", "KRW-HUNT", "KRW-ONG", "KRW-XRP", "KRW-ZRX", "KRW-GRS", "KRW-POWR", "KRW-ONT", "KRW-NU", # 50
+           "KRW-POLY","KRW-CRO", "KRW-GLM", "KRW-ELF", "KRW-WAXP", "KRW-STEEM", "KRW-CVC", "KRW-HUM", "KRW-HBAR","KRW-XLM", # 60
+           "KRW-ARDR", "KRW-AERGO", "KRW-CHZ", "KRW-MOC", "KRW-TFUEL", "KRW-DOGE", "KRW-UPP", "KRW-FCT2", "KRW-XEM", "KRW-DKA", # 70
+           "KRW-STPT","KRW-ANKR") # 72 종목
+
+close_time = time.time() + (3600*12 + 0) # 경과시간 지정(초) 1시간=3600초
+print(time.strftime('%m-%d %H:%M:%S'),"--시작--")
+
+while time.time() < close_time :
+    for ticker in tickers :
+        while (upbit.get_balance(ticker) * pyupbit.get_current_price([ticker]) < 5000) and (upbit.get_balance() > 5100000) :
+            data = pyupbit.get_ohlcv(ticker, "minute1", count=4)
+            close_cost = data['close']
+            # volume = data['volume'] # 6분간 거래량 / volume[-1] = 현재거래량
+            # ma5 = volume.rolling(3).mean() # 5분간 이동평균 거래량
+            now_cost = pyupbit.get_current_price([ticker])
+            
+            if now_cost > close_cost[-1] * 1.0007 : # and (volume[-1] * now_cost) > 100000000 and (now_cost > close_cost[-1]) :
+                upbit.buy_market_order(ticker, 5100)
+                print(time.strftime('%m-%d %H:%M:%S'), ticker, "/", upbit.get_avg_buy_price(ticker),"/ 매수")            
+            else :
+                break
+    # print(time.strftime('%m-%d %H:%M:%S'), "매수종료")
+        
+    for ticker in tickers :
+        while upbit.get_balance(ticker) >  0 :
+            now_cost = pyupbit.get_current_price(ticker)
+            unit = upbit.get_balance(ticker)
+            avg_cost = upbit.get_avg_buy_price(ticker)
+            data = pyupbit.get_ohlcv(ticker, "minute1", count=4)
+            close_cost = data['close'] 
+            
+            if (now_cost < avg_cost * 0.995) or ( now_cost < close_cost[-1] * 0.97) : 
+                upbit.sell_market_order(ticker, unit) # 보유량 전체 매도
+                print(time.strftime('%m-%d %H:%M:%S'),ticker,"/", now_cost,"/", "매도 / 수익률 : ", "%0.4f" %(now_cost/avg_cost))
+            else :
+                break    
+    # print(time.strftime('%m-%d %H:%M:%S'), "매도종료")
+    print("")
+             
+    if time.time() > close_time :
+        print(time.strftime('%m-%d %H:%M:%S'), "--종료--")
+        break
+    else : 
+        pass 
